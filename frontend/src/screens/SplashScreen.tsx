@@ -1,17 +1,45 @@
 import React, {useEffect} from 'react';
 import {View, Text, StyleSheet, Image} from 'react-native';
 import {ON_PRIMARY_COLOR, PRIMARY_COLOR} from '../helper/Theme';
-// import {handleBackButton} from '../helper/Utils';
 import {SplashScreenProp} from '../type';
-import {KEYS, retrieveItem} from '../helper/Utils';
+import {clearStorage, KEYS, retrieveItem} from '../helper/Utils';
+import {useDispatch} from 'react-redux';
+import {setUserId, setUserToken} from '../store/UserSlice';
 
 const SplashScreen = ({navigation}: SplashScreenProp) => {
+  const dispatch = useDispatch();
+
+  function isDateMoreThanSevenDaysOld(dateString: string) {
+    const inputDate = new Date(dateString).getTime();
+    const currentDate = new Date().getTime();
+    const timeDifference = currentDate - inputDate;
+    const daysDifference = timeDifference / (1000 * 3600 * 24);
+    return daysDifference >= 6;
+  }
+
+  // For testing purpose
+  function isDateNotMoreThanTenMinutesOld(dateString: string) {
+    const inputDate = new Date(dateString);
+    const currentDate = new Date();
+    const timeDifference = currentDate.getTime() - inputDate.getTime();
+    const minutesDifference = timeDifference / (1000 * 60);
+    return minutesDifference <= 10;
+  }
+
   const checkLoginStatus = async () => {
     try {
-      const user = await retrieveItem(KEYS.LOGIN_STATE);
-      if (user) {
+      const userId = await retrieveItem(KEYS.USER_ID);
+      console.log('User Id', userId);
+      const user = await retrieveItem(KEYS.USER_TOKEN);
+      const expiryDate = await retrieveItem(KEYS.USER_TOKEN_EXPIRY_DATE);
+
+      if (user && expiryDate && !isDateMoreThanSevenDaysOld(expiryDate)) {
+        dispatch(setUserId(userId));
+        dispatch(setUserToken(user));
+
         navigation.navigate('TabNavigation');
       } else {
+        await clearStorage();
         navigation.navigate('LoginScreen');
       }
     } catch (error) {

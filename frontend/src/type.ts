@@ -12,10 +12,21 @@ export type RootStackParamList = {
   SignUpScreenSecond: {user: UserDetail};
   OtpScreen: {email: string};
   NewPasswordScreen: {email: string};
-  EditorScreen: undefined;
+  EditorScreen: {
+    title: string;
+    description: string;
+    selectedGenres: Category[];
+    imageUtils: string;
+  };
   ArticleDescriptionScreen: undefined;
-  PreviewScreen: {article: string};
-  ArticleScreen: {id: string};
+  PreviewScreen: {
+    article: string,
+    title: string,
+    description: string,
+    image: string,
+    selectedGenres: Category[];
+  };
+  ArticleScreen: undefined;
   ProfileEditScreen: undefined;
 };
 
@@ -85,11 +96,13 @@ export type ProfileScreenProps = CompositeScreenProps<
 
 export type HomeScreenHeaderProps = {
   handlePresentModalPress: () => void;
+  onTextInputChange: (textInput: string) => void;
 };
 
 export type ArticleCardProps = {
-  item: Article;
+  item: ArticleData;
   navigation: HomeScreenProps['navigation'] | ProfileScreenProps['navigation'];
+  success: () => void;
 };
 
 export type ProfileHeaderProps = {
@@ -114,8 +127,8 @@ export type HomeScreenFilterModalProps = {
   selectCategoryList: CategoryType['name'][];
   handleFilterReset: () => void;
   handleFilterApply: () => void; // Replace `any` with the actual filter type if available
-  setDate: (date: string) => void;
-  date: string | '';
+  setSortingType: (selectedType: string) => void;
+  sortingType: string | '';
 };
 
 export type HomeScreenCategoriesFlatlistProps = {
@@ -173,6 +186,22 @@ export type Article = {
   imageUtils: string;
 };
 
+export type ArticleData = {
+  _id: string;
+  title: string;
+  authorName: string;
+  authorId: string;
+  content: string;
+  summary: string;
+  tags: string[];
+  last_updated: string;
+  imageUtils: string[];
+  viewCount: number;
+  likeCount: number;
+  likedUsers: string[];
+  savedUsers: string[];
+};
+
 export type CategoryType = {
   id: number;
   name: string;
@@ -207,6 +236,7 @@ export type User = {
   user_id: string;
   user_name: string;
   verificationToken: null;
+  refreshToken: null;
 };
 
 export type Contactdetail = {

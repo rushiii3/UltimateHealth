@@ -1,5 +1,5 @@
 import React, {useCallback, useMemo, useRef, useState} from 'react';
-import {Text, StyleSheet, View, TextInput, FlatList} from 'react-native';
+import {Text, StyleSheet, View, FlatList, ScrollView} from 'react-native';
 import {
   BottomSheetModal,
   BottomSheetView,
@@ -8,18 +8,11 @@ import {
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import {TouchableOpacity} from 'react-native-gesture-handler';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
-import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import CategoriesFlatlistModal from './CategoriesFlatlistModal';
 import {PRIMARY_COLOR} from '../helper/Theme';
 import {HomeScreenFilterModalProps} from '../type';
 
-// Helper function to format date as DD/MM/YYYY
-const formatDate = (date: Date) => {
-  const day = date.getDate().toString().padStart(2, '0');
-  const month = (date.getMonth() + 1).toString().padStart(2, '0'); // Months are zero-based
-  const year = date.getFullYear();
-  return `${day}/${month}/${year}`;
-};
+// Helper function to format date as DD/MM/YYY
 
 // Main component
 const FilterModal = ({
@@ -29,18 +22,19 @@ const FilterModal = ({
   selectCategoryList,
   handleFilterReset,
   handleFilterApply,
-  setDate,
-  date,
+  setSortingType,
 }: HomeScreenFilterModalProps) => {
   // Ref for second bottom sheet modal (category selection)
   const bottomSheetModalRef2 = useRef<BottomSheetModal>(null);
 
+  const sortBy = ['recent', 'popular', 'oldest'];
+  const [selectedCategory, setSelectedCategory] = useState('');
   // Function to present the second bottom sheet modal
   const handlePresentModalPress = useCallback(() => {
     bottomSheetModalRef2.current?.present();
   }, []);
 
-  // State for date picker visibility
+  /*
   const [isDatePickerVisible, setDatePickerVisibility] = useState(false);
 
   // Show date picker
@@ -53,18 +47,19 @@ const FilterModal = ({
     setDatePickerVisibility(false);
   };
 
+
   // Handle date selection from date picker
   const handleConfirm = (date: Date) => {
-    const formattedDate = formatDate(date);
-    setDate(formattedDate);
+    setSortingType(selectedCategory);
     hideDatePicker();
   };
+  */
 
   // Get safe area insets for top margin adjustment
   const insets = useSafeAreaInsets();
 
   // Define snap points for the bottom sheet
-  const snapPoints = useMemo(() => ['25%', '60%', '80%'], []);
+  const snapPoints = useMemo(() => ['20%', '50%', '90%'], []);
 
   // Close the bottom sheet modal
   const handleDismissModalPress = useCallback(() => {
@@ -105,13 +100,15 @@ const FilterModal = ({
 
         <View style={styles.filterContainer}>
           <View style={styles.input}>
-            <Text style={styles.inputLabel}>Date</Text>
-            <DateTimePickerModal
+            <Text style={styles.inputLabel}>Sort By</Text>
+            {/**
+             *  <DateTimePickerModal
               isVisible={isDatePickerVisible}
               mode="date"
               onConfirm={handleConfirm}
               onCancel={hideDatePicker}
             />
+
             <TouchableOpacity
               onPress={showDatePicker}
               touchSoundDisabled={true}
@@ -133,6 +130,36 @@ const FilterModal = ({
                 </View>
               </View>
             </TouchableOpacity>
+             */}
+            <ScrollView
+              horizontal={true}
+              showsHorizontalScrollIndicator={false}>
+              {sortBy?.map((item, index) => (
+                <TouchableOpacity
+                  key={index}
+                  // eslint-disable-next-line react-native/no-inline-styles
+                  style={{
+                    ...styles.button,
+                    backgroundColor:
+                      selectedCategory === item ? 'green' : 'white',
+                    borderColor:
+                      selectedCategory === item ? 'white' : '#808080',
+                  }}
+                  onPress={() => {
+                    setSelectedCategory(item);
+                    setSortingType(item);
+                  }}>
+                  <Text
+                    // eslint-disable-next-line react-native/no-inline-styles
+                    style={{
+                      ...styles.labelStyle,
+                      color: selectedCategory === item ? 'white' : 'black',
+                    }}>
+                    {item}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
           </View>
 
           <View style={styles.input}>
@@ -140,11 +167,15 @@ const FilterModal = ({
               style={styles.categoryButton}
               onPress={handlePresentModalPress}>
               <Text style={styles.inputLabel}>Category</Text>
-              <MaterialIcons name="chevron-right" color={'black'} size={26} />
+              <MaterialIcons
+                name="chevron-right"
+                color={PRIMARY_COLOR}
+                size={36}
+              />
             </TouchableOpacity>
             <View style={styles.categoryListContainer}>
               <FlatList
-                horizontal={true}
+                numColumns={4}
                 data={selectCategoryList}
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.categoryList}
@@ -175,14 +206,21 @@ const FilterModal = ({
           <View style={styles.footerButtonContainer}>
             <TouchableOpacity
               style={styles.resetButton}
-              onPress={handleFilterReset}>
+              onPress={() => {
+                setSelectedCategory('');
+                handleFilterReset();
+                handleDismissModalPress();
+              }}>
               <Text style={styles.resetButtonText}>Reset</Text>
             </TouchableOpacity>
           </View>
           <View style={styles.footerButtonContainer}>
             <TouchableOpacity
               style={styles.applyButton}
-              onPress={handleFilterApply}>
+              onPress={() => {
+                handleFilterApply();
+                handleDismissModalPress();
+              }}>
               <Text style={styles.applyButtonText}>Apply</Text>
             </TouchableOpacity>
           </View>
@@ -238,8 +276,8 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   inputLabel: {
-    fontSize: 17,
-    fontWeight: '600',
+    fontSize: 19,
+    fontWeight: '500',
     color: '#222',
     marginBottom: 8,
   },
@@ -280,11 +318,11 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   categoryItem: {
-    borderRadius: 100,
-    paddingVertical: 15,
-    paddingHorizontal: 15,
+    borderRadius: 40,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
     marginBottom: 10,
-    backgroundColor: PRIMARY_COLOR,
+    backgroundColor: 'green',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -292,7 +330,7 @@ const styles = StyleSheet.create({
   },
   categoryItemText: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '500',
     color: 'white',
   },
   footer: {
@@ -314,10 +352,10 @@ const styles = StyleSheet.create({
     borderColor: PRIMARY_COLOR,
   },
   resetButtonText: {
-    color: PRIMARY_COLOR,
+    color: 'black',
     textAlign: 'center',
     fontSize: 17,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   applyButton: {
     backgroundColor: PRIMARY_COLOR,
@@ -328,6 +366,22 @@ const styles = StyleSheet.create({
     color: 'white',
     textAlign: 'center',
     fontSize: 17,
-    fontWeight: '700',
+    fontWeight: '600',
+  },
+
+  button: {
+    flex: 0,
+    borderRadius: 14,
+    marginHorizontal: 6,
+    marginVertical: 4,
+    padding: 10,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  labelStyle: {
+    fontWeight: '500',
+    fontSize: 15,
+    textTransform: 'capitalize',
   },
 });

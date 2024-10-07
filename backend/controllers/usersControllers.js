@@ -1,13 +1,14 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/UserModel");
 const UnverifiedUser = require('../models/UnverifiedUserModel');
-const {verifyUser} = require('../auth/authMiddleware');
+const {verifyUser} = require('../middleware/authMiddleware');
 const bcrypt = require("bcrypt");
 const nodemailer = require('nodemailer');
 const moment = require("moment");
 const Article = require("../models/Articles");
 const adminModel = require('../models/adminModel');
 require('dotenv').config();
+
 const { sendVerificationEmail } = require('./emailservice');
 
 module.exports.register = async (req, res) => {
@@ -99,19 +100,9 @@ module.exports.register = async (req, res) => {
   }
 
   module.exports.getprofile = async (req, res) => {
-    let token;
-    if (req.cookies && req.cookies['token']) {
-      token = req.cookies['token'];
-    } else {
-      token = req.headers.authorization?.split(' ')[1];
-    }
-  
-    if (!token) {
-      return res.status(401).json({ error: 'Authorization token missing' });
-    }
+    
     try {
-      const email = await verifyUser(token);
-      const user = await User.findOne({ email });
+      const user = await User.findOne({ _id: req.user.userId });
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
@@ -193,64 +184,136 @@ module.exports.verifyOtpForForgotPassword = async (req, res) => {
     res.status(200).json({ message: 'OTP is valid.' });
   };
 
-module.exports.login = async (req, res) => {
-  try {
-    const { email, password } = req.body;
-
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Please provide email and password' });
-    }
-
-    let user = await User.findOne({ email });
+  module.exports.login = async (req, res) => {
+    try {
+      const { email, password } = req.body;
   
+      if (!email || !password) {
+        return res.status(400).json({ error: 'Please provide email and password' });
+      }
+  
+      let user = await User.findOne({ email });
+      if (!user) {
+        user = await UnverifiedUser.findOne({ email });
+        if (!user) return res.status(404).json({ error: 'User not found' });
+        return res.status(403).json({ error: 'Email not verified. Please check your email.' });
+      }
+  
+      if (!user.isVerified) {
+        return res.status(403).json({ error: 'Email not verified. Please check your email.' });
+      }
+  
+      const isPasswordValid = await bcrypt.compare(password, user.password);
+      if (!isPasswordValid) {
+        return res.status(401).json({ error: 'Invalid password' });
+      }
+  
+      // Generate JWT Access Token
+      const accessToken = jwt.sign(
+        { userId: user._id, email: user.email },
+        process.env.JWT_SECRET,
+        { expiresIn: '15m' } // Short-lived access token
+      );
+  
+      // Generate Refresh Token
+      const refreshToken = jwt.sign(
+        { userId: user._id, email: user.email },
+        process.env.JWT_SECRET,
+        { expiresIn: '7d' } // Longer-lived refresh token
+      );
+      console.log('Generated Token:', accessToken);
+      console.log('Generated Refresh Token', refreshToken)
+      // Store refresh token in the database
+      user.refreshToken = refreshToken;
+      await user.save();
+  
+      // Set cookies for tokens
+      res.cookie('accessToken', accessToken, { httpOnly: true, maxAge: 900000 }); // 15 minutes
+      res.cookie('refreshToken', refreshToken, { httpOnly: true, maxAge: 604800000 }); // 7 days
+  
+      res.status(200).json({ user, accessToken, refreshToken, message: 'Login Successful' });
+    } catch (error) {
+      console.log("Login Error", error);
 
-    if (!user) {
+      if (error.name === 'ValidationError') {
+        return res.status(400).json({ error: error.message }); // Validation errors
+      } else {
+        return res.status(500).json({ error: 'Internal server error' });
+      }
+    }
+  };
 
-      user = UnverifiedUser.findOne({email});
-      if(!user)
-        return res.status(404).json({ error: 'User not found' });
-      else
-      return res.status(403).json({ error: 'Email not verified. Please check your email.' });
-     
+
+module.exports.logout = async (req, res) => {
+  const { refreshToken } = req.cookies;
+
+  if (!refreshToken) {
+    return res.status(400).json({ error: 'Refresh token required' });
+  }
+
+  try {
+    // Find the user and remove the refresh token
+    const user = await User.findOne({ refreshToken });
+    if (user) {
+      user.refreshToken = null;
+      await user.save();
     }
 
-    if (!user.isVerified) {
-      return res.status(403).json({ error: 'Email not verified. Please check your email.' });
-    }
-   
+    // Clear cookies
+    res.clearCookie('accessToken');
+    res.clearCookie('refreshToken');
 
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-
-    if (!isPasswordValid) {
-      return res.status(401).json({ error: 'Invalid password' });
-    }
-
-    const token = jwt.sign(
-      { userId: user._id, email: user.email },
-      process.env.JWT_SECRET,
-      { expiresIn: '1d' }
-    );
-    
-    user.verificationToken = token;
-    res.cookie('token', token, { httpOnly: true, maxAge: 86400000 });
-    res.status(200).json({ user, token, message: "Login Successful" });
+    res.status(200).json({ message: 'Logout successful' });
   } catch (error) {
-    if (error.name === 'ValidationError') {
-      return res.status(400).json({ error: error.message }); // Validation errors
-    } else {
-      return res.status(500).json({ error: 'Internal server error' });
-    }
+    res.status(500).json({ error: 'Internal server error' });
   }
 };
 
-module.exports.logout = (req, res) => {
-    
-    // Clear the JWT token cookie
-    res.clearCookie('token');
-    res.json({ message: 'Logout successful' });
-  };
+module.exports.refreshToken = async (req, res) => {
+  const { refreshToken } = req.body;
 
-  module.exports.deleteByUser = async(req,res)=>{
+  if (!refreshToken) {
+    return res.status(401).json({ error: 'Refresh token required' });
+  }
+
+  try {
+    // Verify the refresh token
+    const decoded = jwt.verify(refreshToken, process.env.JWT_SECRET);
+
+    // Check if the refresh token is valid and associated with the user
+    const user = await User.findOne({ _id: decoded.userId, refreshToken });
+    if (!user) {
+      return res.status(403).json({ error: 'Invalid refresh token' });
+    }
+
+    // Generate a new access token
+    const newAccessToken = jwt.sign(
+      { userId: user._id, email: user.email },
+      process.env.JWT_SECRET,
+      { expiresIn: '15m' }
+    );
+
+    // Optionally, generate a new refresh token
+    const newRefreshToken = jwt.sign(
+      { userId: user._id, email: user.email },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    // Update the refresh token in the database
+    user.refreshToken = newRefreshToken;
+    await user.save();
+
+    res.cookie('accessToken', newAccessToken, { httpOnly: true, maxAge: 900000 }); // 15 minutes
+    res.cookie('refreshToken', newRefreshToken, { httpOnly: true, maxAge: 604800000 }); // 7 days
+
+    res.status(200).json({ accessToken: newAccessToken, refreshToken: newRefreshToken });
+  } catch (error) {
+    res.status(403).json({ error: 'Invalid refresh token' });
+  }
+};
+
+module.exports.deleteByUser = async(req,res)=>{
     let token;
     if (req.cookies && req.cookies['token']) {
       token = req.cookies['token'];
@@ -285,7 +348,7 @@ module.exports.logout = (req, res) => {
     } catch (error) {
       res.status(500).json({ error: error.message });
     }
-  }
+}
 
 
   module.exports.deleteByAdmin = async(req,res)=>{
@@ -310,15 +373,15 @@ module.exports.logout = (req, res) => {
 
 module.exports.follow = async (req, res) => {
   try {
-      const { userId, followUserId } = req.body;
+      const {followUserId } = req.body;
 
       // Check if user is trying to follow themselves
-      if (userId === followUserId) {
-          return res.status(400).json({ message: "You cannot follow yourself" });
+      if (req.user.user_id === followUserId) {
+          return res.status(400).json({ message: "You cannot follow or unfollow yourself" });
       }
 
       // Find the user who is following
-      const user = await User.findOne({ user_id: userId });
+      const user = await User.findOne({ user_id: req.user.user_id});
       if (!user) return res.status(404).json({ message: "User not found" });
 
       // Find the user to be followed
@@ -326,63 +389,49 @@ module.exports.follow = async (req, res) => {
       if (!followUser) return res.status(404).json({ message: "User to follow not found" });
 
       // Check if the user already follows the followUser
-      if (user.followings.includes(followUserId)) {
-          return res.status(400).json({ message: "You already follow this user" });
-      }
+      const followingUserset = new Set(user.followings);
 
-      // Add followUserId to user's followings and userId to followUser's followers
-      user.followings.push(followUserId);
-      user.followingCount += 1;
-      await user.save();
-
-      followUser.followers.push(userId);
-      followUser.followerCount += 1;
-      await followUser.save();
-
-      res.json({ message: "Followed successfully" });
-  } catch (error) {
-      res.status(500).json({ message: error.message });
-  }
-};
-
-
-// Unfollow a user
-module.exports.unfollow = async (req, res) => {
-  try {
-      const { userId, unfollowUserId } = req.body;
-
-      // Check if user is trying to unfollow themselves
-      if (userId === unfollowUserId) {
-          return res.status(400).json({ message: "You cannot unfollow yourself" });
-      }
-
-      // Find the user who is unfollowing
-      const user = await User.findOne({ user_id: userId });
-      if (!user) return res.status(404).json({ message: "User not found" });
-
-      // Find the user to be unfollowed
-      const unfollowUser = await User.findOne({ user_id: unfollowUserId });
-      if (!unfollowUser) return res.status(404).json({ message: "User to unfollow not found" });
-
-      // Check if the user already does not follow the unfollowUser
-      if (!user.followings.includes(unfollowUserId)) {
-          return res.status(400).json({ message: "You do not follow this user" });
-      }
-
-      // Remove unfollowUserId from user's followings and userId from unfollowUser's followers
-      user.followings = user.followings.filter(id => id.toString() !== unfollowUserId);
+      if (followingUserset.has(followUserId)) {  
+        // Unfollow
+      user.followings = user.followings.filter(id => id !== followUserId);
       user.followingCount = Math.max(0, user.followingCount - 1);
       await user.save();
 
-      unfollowUser.followers = unfollowUser.followers.filter(id => id.toString() !== userId);
-      unfollowUser.followerCount = Math.max(0, unfollowUser.followerCount - 1);
-      await unfollowUser.save();
+      followUser.followers = followUser.followers.filter(id => id !== req.user.user_id);
+      followUser.followerCount = Math.max(0, followUser.followerCount - 1);
+      await followUser.save();
 
-      res.json({ message: "Unfollowed successfully" });
+      }else{
+
+        user.followings.push(followUserId);
+        user.followingCount += 1;
+        await user.save();
+  
+        followUser.followers.push(req.user.user_id);
+        followUser.followerCount += 1;
+        await followUser.save();
+        res.json({ message: "Followed successfully" });
+
+      }
+  
   } catch (error) {
       res.status(500).json({ message: error.message });
   }
 };
+
+// Get Follower
+
+module.exports.getFollowers =  async (req, res) => {
+  const userId = req.params.userId;
+  const author = await User.findById(userId);
+
+  if(!author){
+    return res.status(404).json({ error: 'Author not found' });
+  }
+  return  res.status(200).json({ followers: author.followers });
+
+}
+
 //update read article 
 module.exports.updateReadArticles = async (req, res) => {
   try {

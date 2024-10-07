@@ -6,22 +6,104 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
+  Image,
+  Alert,
 } from 'react-native';
+import {hp} from '../../helper/Metric';
+import {useSelector} from 'react-redux';
+import {Category} from '../../type';
+import Ionicon from 'react-native-vector-icons/Ionicons';
+import {PRIMARY_COLOR} from '../../helper/Theme';
+import {launchImageLibrary} from 'react-native-image-picker';
+import RNFS from 'react-native-fs';
+import ImageResizer from '@bam.tech/react-native-image-resizer';
 
-const ArticleDescriptionScreen = () => {
+const ArticleDescriptionScreen = ({navigation}) => {
   const [title, setTitle] = useState('');
-  const [body, setBody] = useState('');
-  const [selectedGenre, setSelectedGenre] = useState(null);
-  const [autoDesign, setAutoDesign] = useState(false);
+  const [description, setDescription] = useState('');
+  const [selectedGenres, setSelectedGenres] = useState<Category[]>([]);
+  const {categories} = useSelector((state: any) => state.article);
+  const [imageUtils, setImageUtils] = useState('');
 
-  const handleGenrePress = genre => {
-    setSelectedGenre(genre);
+  const handleGenrePress = (genre: Category) => {
+    if (isSelected(genre)) {
+      setSelectedGenres(selectedGenres.filter(item => item.id !== genre.id));
+    } else if (selectedGenres.length < 5) {
+      // Check if the length of selected genres is less than 5
+      setSelectedGenres([...selectedGenres, genre]); // Add the new genre to the selected genres array
+    }
   };
 
+  const isSelected = genre => selectedGenres.includes(genre);
+
+  const handleCreatePost = () => {
+    if (title === '') {
+      Alert.alert('Title section is required');
+      return;
+    } else if (description === '') {
+      Alert.alert('Please give proper description');
+      return;
+    } else if (selectedGenres.length === 0) {
+      Alert.alert('Please select at least one suitable tags for your article.');
+      return;
+    }
+
+    // Later purpose
+    else if (imageUtils.length === 0) {
+      //Alert.alert('Please upload one  image for your article.');
+      // return;
+    }
+
+    navigation.navigate('EditorScreen', {
+      title: title,
+      description: description,
+      selectedGenres: selectedGenres,
+      imageUtils: imageUtils,
+    });
+  };
+
+  const selectImage = () => {
+    const options = {
+      mediaType: 'photo',
+      includeBase64: true,
+    };
+
+    launchImageLibrary(options, response => {
+      if (response.didCancel) {
+        console.log('User cancelled image picker');
+      } else if (response.error) {
+        console.log('ImagePicker Error: ', response.error);
+      } else if (response.assets) {
+        const {uri, fileSize} = response.assets[0];
+
+        // Check file size (1 MB limit)
+        if (fileSize && fileSize > 1024 * 1024) {
+          Alert.alert('Error', 'File size exceeds 1 MB.');
+          return;
+        }
+
+        // Check dimensions
+        ImageResizer.createResizedImage(uri, 2000, 2000, 'JPEG', 100)
+          .then(resizedImageUri => {
+            // If the image is resized successfully, upload it
+          })
+          .catch(err => {
+            console.log(err);
+            Alert.alert('Error', 'Could not resize the image.');
+          });
+
+        setImageUtils(uri ? uri : '');
+      }
+    });
+  };
   return (
-    <View style={styles.container}>
+    <ScrollView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerText}>Write Content</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Ionicon name="chevron-back" size={26} color={'#007bff'} />
+        </TouchableOpacity>
+        <Text style={styles.headerText}>Start Writing</Text>
+        <Text style={styles.headerText}> </Text>
       </View>
 
       <View style={styles.inputContainer}>
@@ -41,16 +123,10 @@ const ArticleDescriptionScreen = () => {
           placeholder="Give a little description or overview"
           multiline
           numberOfLines={4}
-          value={body}
-          onChangeText={setBody}
+          value={description}
+          onChangeText={setDescription}
         />
       </View>
-
-      {body.trim() === '' && (
-        <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>Empty posts not allowed</Text>
-        </View>
-      )}
 
       <View style={styles.captionContainer}>
         <Text style={styles.captionText}>
@@ -58,35 +134,59 @@ const ArticleDescriptionScreen = () => {
         </Text>
       </View>
 
+      <View style={styles.selectedGenresContainer}>
+        {selectedGenres.map((genre, index) => (
+          <Text key={index} style={styles.selectedGenreText}>
+            #{genre.name}
+          </Text>
+        ))}
+      </View>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.genreContainer}>
-        {['Health', 'Diet', 'Stories', 'Dieases', 'Inspiration', 'Heart'].map(
-          genre => (
-            <TouchableOpacity
-              key={genre}
+        {categories.map((genre, index) => (
+          <TouchableOpacity
+            key={index}
+            style={[
+              styles.genreButton,
+              isSelected(genre) &&
+                styles.selectedGenreButton &&
+                styles.selectedGenreButton,
+            ]}
+            onPress={() => handleGenrePress(genre)}>
+            <Text
               style={[
-                styles.genreButton,
-                selectedGenre === genre && styles.selectedGenreButton,
-              ]}
-              onPress={() => handleGenrePress(genre)}>
-              <Text
-                style={[
-                  styles.genreButtonText,
-                  selectedGenre === genre && styles.selectedGenreButtonText,
-                ]}>
-                #{genre}
-              </Text>
-            </TouchableOpacity>
-          ),
-        )}
+                styles.genreButtonText,
+                isSelected(genre) && styles.selectedGenreButtonText,
+              ]}>
+              #{genre.name}
+            </Text>
+          </TouchableOpacity>
+        ))}
       </ScrollView>
 
-      <TouchableOpacity style={styles.submitButton}>
-        <Text style={styles.submitButtonText}>Submit</Text>
+      {imageUtils !== '' && (
+        <Image
+          source={{uri: imageUtils}}
+          style={{
+            width: 400,
+            alignSelf: 'center',
+            resizeMode: 'contain',
+            height: 300,
+            marginTop: 20,
+          }}
+        />
+      )}
+      <TouchableOpacity onPress={selectImage} style={styles.inputContainer}>
+        <Text style={styles.inputLabel}>Related image</Text>
+        <Text style={styles.input}>Upload one image</Text>
       </TouchableOpacity>
-    </View>
+
+      <TouchableOpacity style={styles.submitButton} onPress={handleCreatePost}>
+        <Text style={styles.submitButtonText}>Continue</Text>
+      </TouchableOpacity>
+    </ScrollView>
   );
 };
 
@@ -98,7 +198,7 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     padding: 6,
   },
   backButton: {
@@ -109,9 +209,9 @@ const styles = StyleSheet.create({
     color: '#000',
   },
   headerText: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: 'bold',
-    color: '#000',
+    color: '#007bff',
   },
   uploadButton: {
     padding: 8,
@@ -124,17 +224,22 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   inputLabel: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#000',
+    fontSize: 20,
+
+    fontWeight: '500',
+    color: '#007bff',
+    marginHorizontal: hp(1),
     marginBottom: 8,
   },
   input: {
+    fontSize: 17,
+    fontFamily: '600',
     borderWidth: 1,
-    borderColor: '#ccc',
-    padding: 12,
+    borderColor: 'black',
+    padding: 8,
     textAlignVertical: 'top',
     borderRadius: 4,
+    marginHorizontal: hp(1),
     marginBottom: 10,
   },
   errorContainer: {
@@ -148,11 +253,12 @@ const styles = StyleSheet.create({
     color: '#c00',
   },
   captionContainer: {
-    padding: 16,
+    padding: 12,
+    marginHorizontal: hp(1),
     marginBottom: 16,
   },
   captionText: {
-    color: '#666',
+    color: '#007bff',
   },
   checkboxContainer: {
     flexDirection: 'row',
@@ -185,10 +291,10 @@ const styles = StyleSheet.create({
   },
   genreButton: {
     backgroundColor: '#f0f0f0',
-    width: '20%',
+    flex: 0,
     padding: 8,
     margin: 4,
-    borderRadius: 4,
+    borderRadius: 8,
     alignItems: 'center',
   },
   genreButtonText: {
@@ -211,6 +317,34 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 18,
     fontWeight: 'bold',
+  },
+  selectedGenresContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    padding: 16,
+  },
+  selectedGenreItem: {
+    backgroundColor: '#007bff',
+    padding: 8,
+    margin: 4,
+    borderRadius: 4,
+  },
+  selectedGenreText: {
+    color: PRIMARY_COLOR,
+    marginHorizontal: hp(0.5),
+  },
+
+  imagePreviewContainer: {
+    marginTop: 20,
+    borderColor: '#ccc',
+    borderWidth: 1,
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  imagePreview: {
+    width: 200,
+    height: 200,
+    resizeMode: 'cover',
   },
 });
 

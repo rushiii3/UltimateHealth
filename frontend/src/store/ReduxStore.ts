@@ -1,13 +1,13 @@
-import { configureStore } from '@reduxjs/toolkit';
+import {configureStore} from '@reduxjs/toolkit';
 import NetworkSlice from './NetworkSlice';
-
-
-
+import articleReducer from './articleSlice';
+import userReducer from './UserSlice';
 
 const store = configureStore({
   reducer: {
     network: NetworkSlice,
-    // MORE REDUCER WILL ADD LATER
+    article: articleReducer,
+    user: userReducer
   },
 });
 

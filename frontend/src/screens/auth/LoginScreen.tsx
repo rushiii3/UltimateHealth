@@ -9,7 +9,6 @@ import {
   BackHandler,
   Alert,
   useColorScheme,
-  Modal,
 } from 'react-native';
 import React, {useEffect, useState} from 'react';
 import {PRIMARY_COLOR} from '../../helper/Theme';
@@ -17,17 +16,20 @@ import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {fp, hp, wp} from '../../helper/Metric';
 import {Colors} from 'react-native/Libraries/NewAppScreen';
 // import {useNavigation} from '@react-navigation/native';
-import {Categories, KEYS, storeItem} from '../../helper/Utils';
+import {KEYS, storeItem} from '../../helper/Utils';
 import EmailInputModal from '../../components/EmailInputModal';
 import Icon from 'react-native-vector-icons/Ionicons';
 import {AuthData, LoginScreenProp, User} from '../../type';
 import {useMutation} from '@tanstack/react-query';
 import axios, {AxiosError} from 'axios';
+import {useDispatch} from 'react-redux';
 import {LOGIN_API, RESEND_VERIFICATION, SEND_OTP} from '../../helper/APIUtils';
 import Loader from '../../components/Loader';
+import {setUserId, setUserToken} from '../../store/UserSlice';
 
 const LoginScreen = ({navigation}: LoginScreenProp) => {
   const inset = useSafeAreaInsets();
+  const dispatch = useDispatch();
   const isDarkMode = useColorScheme() === 'dark';
   const [emailInputVisible, setEmailInputVisible] = useState(false);
   const [password, setPassword] = useState('');
@@ -119,19 +121,26 @@ const LoginScreen = ({navigation}: LoginScreenProp) => {
       return res.data.user as User;
     },
 
-    onSuccess: data => {
+    onSuccess: async data => {
       const auth: AuthData = {
-        userId: data.user_id,
-        token: data?.verificationToken,
+        userId: data._id,
+        token: data?.refreshToken,
       };
-      storeItem(KEYS.LOGIN_STATE, auth)
-        .then(() => {
-          navigation.navigate('TabNavigation');
-        })
-        .catch(err => {
-          Alert.alert("Can't able to store your authentication state");
-          console.log('Error', err);
-        });
+      try {
+        await storeItem(KEYS.USER_ID, auth.userId.toString());
+        if (auth.token) {
+          await storeItem(KEYS.USER_TOKEN, auth.token.toString());
+          await storeItem(
+            KEYS.USER_TOKEN_EXPIRY_DATE,
+            new Date().toISOString(),
+          );
+          dispatch(setUserId(auth.userId));
+          dispatch(setUserToken(auth.token));
+        }
+        navigation.navigate('TabNavigation');
+      } catch (e) {
+        console.log('Async Storage ERROR', e);
+      }
     },
 
     onError: (error: AxiosError) => {

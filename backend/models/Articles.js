@@ -2,6 +2,10 @@ const mongoose = require('mongoose');
 const Schema = mongoose.Schema;
 const AutoIncrement = require('mongoose-sequence')(mongoose);
 
+//const mongoose = require('mongoose');
+
+
+
 const articleSchema = new Schema({
   _id: {
     type: Number,
@@ -25,31 +29,28 @@ const articleSchema = new Schema({
   },
   summary: {
     type: String,
-    required: true,
+    default: null, // Explicitly state the default
   },
-  published_date: {
+  publishedDate: {
     type: Date,
     required: true,
     default: Date.now,
   },
-  last_updated: {
+  lastUpdated: {
     type: Date,
     required: true,
     default: Date.now,
   },
   tags: {
-    type: [String],
+    type: [String], // Specify that this is an array of strings
+    default: [],
   },
   status: {
     type: String,
-    required: true,
     enum: ['Draft', 'Published', 'Archived'],
+    default: 'Draft', // Setting a default status
   },
   imageUtils: {
-    type: [String],
-    required: true,
-  },
-  relatedBodyPart: {
     type: [String],
     required: true,
   },
@@ -68,6 +69,19 @@ const articleSchema = new Schema({
     required: true,
     default: 'English',
   },
+  adminPost: {
+    type: Boolean,
+    required: true,
+    default: false,
+  },
+  likedUsers: {
+    type: [String], // Specify that this is an array of strings
+    default: [],
+  },
+  savedUsers: {
+    type: [String], // Specify that this is an array of strings
+    default: [],
+  },
 });
 
 // Apply the autoIncrement plugin to the schema
@@ -76,3 +90,4 @@ articleSchema.plugin(AutoIncrement, { id: 'article_id_counter', inc_field: '_id'
 const Article = mongoose.model('Article', articleSchema);
 
 module.exports = Article;
+

@@ -6,11 +6,12 @@ const {
     sendOTPForForgotPassword, verifyOtpForForgotPassword,
     deleteByUser, deleteByAdmin,getprofile,
     follow,
-    unfollow,
+    getFollowers,
     updateReadArticles,
     collectMonthlyRecordsForReading,
     collectMonthlyRecordsForWriting,
-    checkOtp
+    checkOtp,
+    refreshToken
 } = require("../controllers/usersControllers");
 
 const { verifyEmail, sendVerificationEmail, Sendverifymail,resendVerificationEmail } = require('../controllers/emailservice');
@@ -27,11 +28,14 @@ router.post("/user/register", register);
 // Login User Route
 router.post("/user/login", login);
 
+// Refresh Token
+router.post("/user/refreshToken", refreshToken);
+
 // Get profile
-router.get('/user/getprofile',getprofile)
+router.get('/user/getprofile',authenticateToken, getprofile)
 // Follow and Unfollow Routes
 router.post('/user/follow',authenticateToken, follow);
-router.post('/user/unfollow', authenticateToken , unfollow);
+router.get('/user/:userId/followers', authenticateToken, getFollowers);
 
 // Forget password
 router.post("/user/forgotpassword", sendOTPForForgotPassword);

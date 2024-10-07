@@ -5,7 +5,7 @@ const User = require("../models/UserModel");
 // Create a new article
 module.exports.createArticle = async (req, res) => {
   try {
-    const user = await User.findById(req.body.authorId);
+    const user = await User.findOne({ user_id: req.body.authorId })
     const newArticle = new Article(req.body);
     console.log("user:", req.body.authorId);
     if (!user) {
@@ -191,99 +191,94 @@ module.exports.getArticlesByTags = async (req, res) => {
   }
 };
 
-
 // Save Article :
-
 module.exports.saveArticle = async (req, res) => {
   try {
-    const { article, userId } = req.body;
-    const user = await User.findById(userId);
+    const { article_id } = req.body;
 
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
+    if(!article_id){
+      return res.status(400).json({ message: "User ID and Article ID are required"});
+    }
+    const user = await User.findById(req.user.userId);
+    const  article = await Article.findById(article_id);
+
+    if (!user || !article) {
+      return res.status(404).json({ error: 'User or article not found' });
     }
 
     // Check if the article is already saved
-    const isArticleSaved = user.savedArticles.some(savedArticle => savedArticle._id === article._id);
+    //const isArticleSaved = user.savedArticles.includes(id => id === article_id);
+    const savedArticlesSet = new Set(user.savedArticles);
+    const isArticleSaved = savedArticlesSet.has(article_id);
+  
     if (isArticleSaved) {
-      return res.status(400).json({ error: 'Article already saved' });
-    }
+      
+       // unsave article
+       user.savedArticles = user.savedArticles.filter(id => id !== article_id);
+       article.savedUsers = article.savedUsers.filter(id => id !== req.user.userId);
 
-    user.savedArticles.push(article);
+       await user.save();
+       await article.save();
+       res.status(200).json({ message: 'Article unsaved'});
+    
+  }
+   else{
+    user.savedArticles.push(article_id);
+    article.savedUsers.push(req.user.userId);
     await user.save();
-
-    res.status(201).json({ message: 'Article saved successfully', savedArticle: article });
+    await article.save();
+    res.status(200).json({ message: 'Article saved successfully'});
+   }
   } catch (error) {
     res.status(500).json({ error: 'Error saving article', details: error.message });
   }
 };
 
-
-
-// Unsave Articles
-module.exports.unsaveArticle = async (req, res) => {
-  try {
-    const { article, userId } = req.body; // Extract article and userId from request body
-    const user = await User.findById(userId);
-
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    // Find the index of the article to be removed
-    const articleIndex = user.savedArticles.findIndex(savedArticle => savedArticle._id === article._id);
-
-    if (articleIndex === -1) {
-      return res.status(400).json({ error: 'Article not found in saved articles' });
-    }
-
-    user.savedArticles.splice(articleIndex, 1);
-    await user.save();
-
-    res.status(200).json({ message: 'Article unsaved successfully' });
-  } catch (error) {
-    res.status(500).json({ error: 'Error unsaving article', details: error.message });
-  }
-};
-
-
 // Like Articles
 module.exports.likeArticle = async (req, res) => {
   try {
-    const { article, userId } = req.body;
-    const user = await User.findById(userId);
+    const { article_id} = req.body;
+
+    if(!article_id){
+      return res.status(400).json({ message: "Article ID and User ID are required"});
+    }
+
+    const user = await User.findById(req.user.userId);
     
-    const articleDb = await Article.findById(article._id);
+    const articleDb = await Article.findById(article_id);
 
     if (!user || !articleDb) {
       return res.status(404).json({ error: 'User or Article not found' });
     }
 
+
     // Check if the article is already liked
-    const isArticleLiked = user.likedArticles.some(savedArticle => savedArticle._id === article._id);
-
+    const likedArticlesSet = new Set(user.likedArticles);
+    const isArticleLiked = likedArticlesSet.has(article_id);
+   //console.log("Article Id", article_id);
+ 
+  // console.log('Liked Articles', user.likedArticles);
+ //  console.log('Article Liked', isArticleLiked );
+ //  console.log('Liked Users', articleDb.likedUsers);
     if (isArticleLiked) {
-    
-      // Unlike It
-      const articleIndex = user.likedArticles.findIndex(savedArticle => savedArticle._id === article._id);
 
-      if (articleIndex === -1) {
-        return res.status(400).json({ error: 'Article not liked yet' });
-      }
-  
-      user.likedArticles.splice(articleIndex, 1);
+      // Unlike It
+      user.likedArticles = user.likedArticles.filter(id => id !== article_id);
+      articleDb.likeCount = Math.max(articleDb.likeCount - 1, 0);
+      articleDb.likedUsers = articleDb.likedUsers.filter(id => id !== req.user.userId);
       await user.save();
+      await articleDb.save();
+      res.status(200).json({ message: 'Article remove from liked lists successfully', article:articleDb})
       
-      articleDb.likeCount = Math.max(articleDb.likeCount-1,0);
-      await articleDb.save();
-      res.status(200).json({ message: 'Article remove from liked lists successfully' });
     }else{
-       
-      user.likedArticles.push(article);
-      await user.save();
+      user.likedArticles.push(article_id);
       articleDb.likeCount++;
+      articleDb.likedUsers.push(req.user.userId);
+
+      await user.save();
       await articleDb.save();
-      res.status(201).json({ message: 'Article liked successfully', savedArticle: article });
+
+      return res.status(200).json({ message: 'Article liked successfully', article: articleDb });
     }
 
   } catch (error) {
@@ -291,11 +286,29 @@ module.exports.likeArticle = async (req, res) => {
   }
 };
 
+// Update View Count
+module.exports.updateViewCount = async(req, res)=>{
 
+  const {article_id} = req.body;
+  const user = await User.findById(req.user.userId);
+    //console.log("user", req.user);
+ try{
+  const articleDb = await Article.findById(article_id);
 
+  if (!user || !articleDb) {
+    return res.status(404).json({ error: 'User or Article not found' });
+  }
+  articleDb.viewCount +=1;
+  await articleDb.save();
+  res.status(200).json({ message: 'Article view count updated', article: articleDb});
 
+ }catch(err){
 
-/**** For Article Tags */
+  res.status(500).json({ error: 'Error liking article', details: err.message });
+ }
+
+}
+
 // Helper function to get the next id
 const getNextId = async () => {
   const tags = await ArticleTag.find().sort({ id: -1 }).limit(1);
